@@ -12,7 +12,7 @@ You need only to compile, then in Excel, on the Developer tab click 'Excel Add-i
 
 Step 1: Create a new Standard DLL project in twinBASIC.
 
-Step 2: Configure project settings (under the Project menu). You'll need to manually change the output path to have a `.xll` extension, since tB doesn't have a specific project type for this yet, but it's just a renamed DLL anyway. I'm not sure if it's *absolutely* needed, but since the XLCall32.dll we need won't be in the same folder as our xll, I've done like C and put it in the IAT by changing the **Project: Runtime Binding of DLL Declares** to **No**. 
+Step 2: Configure project settings (under the Project menu). You'll need to manually change the output path to have a `.xll` extension, since tB doesn't have a specific project type for this yet, but it's just a renamed DLL anyway. I'm not sure if it's *absolutely* needed, but since the XLCall32.dll we need won't be in the same folder as our xll or System32, I've done like C and put it in the IAT by changing the **Project: Runtime Binding of DLL Declares** to **No**. 
 
 Step 3: Add definitions. As part of this project, I've gone ahead and created a tB version of the entire Excel SDK's xlcall.h, so you can reuse this section in other projects and have everything you need. There's also some standard Windows API defs below this for the demo; you don't need these if you use my WinDevLib package which defines all common APIs.
 
@@ -49,3 +49,6 @@ The biggest problem in code is the absolutely horrendous `XLOPER` type. It's got
 Unlike VBA, twinBASIC supports variadic functions, so we can use either `Excel4` or `Excel4v`. 
 
 So while this project does use some twinBASIC-only syntax, using what's essentially a newer version of VBA is still far, far better than needing to know C/C++!
+
+> [!NOTE]
+> So far I've only had time to test in 64bit Excel 2021.
