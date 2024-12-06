@@ -1,0 +1,1356 @@
+
+Module MainModule
+
+    #Region "xlcall.h"
+    '100% coverage
+    
+    Public Type XLREF
+        rwFirst As Integer
+        rwLast As Integer
+        colFirst As Byte
+        colLast As Byte
+    End Type
+    /*
+    ** XLMREF structure
+    **
+    ** Describes multiple rectangular references.
+    ** This is a variable size structure, default 
+    ** size is 1 reference.
+    */
+
+    Public Type XLMREF
+        count As Integer
+        reftbl(1023) As XLREF /* actually reftbl[count] */
+    End Type
+    
+    
+    Public Type XLREF12
+        rwFirst As Long
+        rwLast As Long
+        colFirst As Long
+        colLast As Long
+    End Type
+    Public Type XLMREF12
+        count As Integer
+        reftbl(1023) As XLREF12 /* actually reftbl[count] */
+    End Type
+    
+    Public Type FP
+        rows As Integer
+        columns As Integer
+        ' double array[1];        /* Actually, array[rows][columns] -- array[columns][rows]*/
+    End Type
+    
+    Public Type FP12
+        rows As Long
+        columns As Long
+        ' double array[1];        /* Actually, array[rows][columns] -- array[columns][rows]*/
+    End Type
+    
+    Public Enum XloperTypes
+        xltypeNum = &H0001
+        xltypeStr = &H0002
+        xltypeBool = &H0004
+        xltypeRef = &H0008
+        xltypeErr = &H0010
+        xltypeFlow = &H0020
+        xltypeMulti = &H0040
+        xltypeMissing = &H0080
+        xltypeNil = &H0100
+        xltypeSRef = &H0400
+        xltypeInt = &H0800
+        xlbitXLFree = &H1000
+        xlbitDLLFree = &H4000
+        xltypeBigData = (xltypeStr Or xltypeInt)
+    End Enum
+    
+    Public Type XLOPER
+        #If Win64 Then
+        val(1) As LongLong 'for 8 byte alignment
+        #Else
+        val(0) As LongLong 'for 8 byte alignment
+        #End If
+ 'BAD EXCEL SDK DEVS:
+ ' union 
+        ' {
+            ' double num;                    /* xltypeNum */
+            ' LPSTR str;                    /* xltypeStr */
+    ' #ifdef __cplusplus
+            ' WORD xbool;                    /* xltypeBool */
+    ' #else    
+            ' WORD bool;                    /* xltypeBool */
+    ' #endif    
+            ' WORD err;                    /* xltypeErr */
+            ' short int w;                    /* xltypeInt */
+            ' struct 
+            ' {
+                ' WORD count;                /* always = 1 */
+                ' XLREF ref;
+            ' } sref;                        /* xltypeSRef */
+            ' struct 
+            ' {
+                ' XLMREF *lpmref;
+                ' IDSHEET idSheet;
+            ' } mref;                        /* xltypeRef */
+            ' struct 
+            ' {
+                ' struct xloper *lparray;
+                ' WORD rows;
+                ' WORD columns;
+            ' } array;                    /* xltypeMulti */
+            ' struct 
+            ' {
+                ' union
+                ' {
+                    ' short int level;        /* xlflowRestart */
+                    ' short int tbctrl;        /* xlflowPause */
+                    ' IDSHEET idSheet;        /* xlflowGoto */
+                ' } valflow;
+                ' WORD rw;                /* xlflowGoto */
+                ' BYTE col;                /* xlflowGoto */
+                ' BYTE xlflow;
+            ' } flow;                        /* xltypeFlow */
+            ' struct
+            ' {
+                ' union
+                ' {
+                    ' BYTE *lpbData;            /* data passed to XL */
+                    ' HANDLE hdata;            /* data returned from XL */
+                ' } h;
+                ' long cbData;
+            ' } bigdata;                    /* xltypeBigData */
+        ' } val;
+        
+        
+        
+        /* [TypeHint(XloperTypes)] */ xltype As Integer
+    End Type
+    Public Type XLOPER12
+        val(2) As LongLong 'for 8 byte alignment 
+        xltype As XloperTypes
+    End Type
+    Public Enum XloperErrorCodes
+        xlerrNull = 0
+        xlerrDiv0 = 7
+        xlerrValue = 15
+        xlerrRef = 23
+        xlerrName = 29
+        xlerrNum = 36
+        xlerrNA = 42
+        xlerrGettingData = 43
+    End Enum
+    
+    Public Enum XloperFlowDataTypes
+        xlflowHalt = 1
+        xlflowGoto = 2
+        xlflowRestart = 8
+        xlflowPause = 16
+        xlflowResume = 64
+    End Enum
+    
+    Public Enum Excel4ReturnCodes
+        xlretSuccess = 0 /* success */
+        xlretAbort = 1 /* macro halted */
+        xlretInvXlfn = 2 /* invalid function number */
+        xlretInvCount = 4 /* invalid number of arguments */
+        xlretInvXloper = 8 /* invalid OPER structure */
+        xlretStackOvfl = 16 /* stack overflow */
+        xlretFailed = 32 /* command failed */
+        xlretUncalced = 64 /* uncalced cell */
+        xlretNotThreadSafe = 128 /* not allowed during multi-threaded calc */
+        xlretInvAsynchronousContext = 256 /* invalid asynchronous function handle */
+        xlretNotClusterSafe = 512 /* not supported on cluster */
+    End Enum
+    
+    Public Enum ExcelXllEvents
+        xleventCalculationEnded = 1 /* Fires at the end of calculation */
+        xleventCalculationCanceled = 2 /* Fires when calculation is interrupted */
+    End Enum
+    
+    ' int _cdecl Excel4(int xlfn, LPXLOPER operRes, int count,... ); 
+    Public Declare PtrSafe Function Excel4 CDecl Lib "XLCall32.dll" (ByVal xlfn As ExcelCommandNumbers, operRes As XLOPER, ByVal count As Long, ByVal ParamArray args As Any()) As Excel4ReturnCodes
+    ' int pascal Excel4v(int xlfn, LPXLOPER operRes, int count, LPXLOPER opers[]);
+    Public Declare PtrSafe Function Excel4v Lib "XLCall32.dll" (ByVal xlfn As ExcelCommandNumbers, operRes As XLOPER, ByVal count As Long, opers As XLOPER) As Excel4ReturnCodes
+    Public Declare PtrSafe Function XLCallVer Lib "XLCall32.dll" () As Long
+    ' long pascal LPenHelper(int wCode, VOID *lpv);
+    Public Declare PtrSafe Function LPenHelper Lib "XLCall32.dll" (ByVal wCode As Long, lpv As Any) As Long
+    
+    ' int _cdecl Excel12(int xlfn, LPXLOPER12 operRes, int count,... );
+    ' /* followed by count LPXLOPER12s */
+    '(Unsupported)
+    ' int pascal Excel12v(int xlfn, LPXLOPER12 operRes, int count, LPXLOPER12 opers[]);
+    Public Delegate Function Excel12v (ByVal xlfn As ExcelCommandNumbers, operRes As XLOPER12, ByVal count As Long, opers As XLOPER12) As Excel4ReturnCodes
+    
+    ' typedef int (CALLBACK *PXL_HPC_ASYNC_CALLBACK)(LPXLOPER12 operAsyncHandle, LPXLOPER12 operReturn);
+    Public Delegate Function XL_HPC_ASYNC_CALLBACK (operAsyncHandle As XLOPER12, operReturn As XLOPER12) As Long
+    
+    Public Enum ExcelClusterConReturnCodes
+        xlHpcRetSuccess = 0
+        xlHpcRetSessionIdInvalid = -1
+        xlHpcRetCallFailed = -2
+    End Enum
+    
+    
+    Public Enum ExcelCallbackFunctionNumbers
+        xlCommand = &H8000&
+        xlSpecial = &H4000
+        xlIntl = &H2000
+        xlPrompt = &H1000
+        xlFree = (0 Or xlSpecial)
+        xlStack = (1 Or xlSpecial)
+        xlCoerce = (2 Or xlSpecial)
+        xlSet = (3 Or xlSpecial)
+        xlSheetId = (4 Or xlSpecial)
+        xlSheetNm = (5 Or xlSpecial)
+        xlAbort = (6 Or xlSpecial)
+        xlGetInst = (7 Or xlSpecial) /* Returns application's hinstance as an integer value, supported on 32-bit platform only */
+        xlGetHwnd = (8 Or xlSpecial)
+        xlGetName = (9 Or xlSpecial)
+        xlEnableXLMsgs = (10 Or xlSpecial)
+        xlDisableXLMsgs = (11 Or xlSpecial)
+        xlDefineBinaryName = (12 Or xlSpecial)
+        xlGetBinaryName = (13 Or xlSpecial)
+        /* GetFooInfo are valid only for calls to LPenHelper */
+        xlGetFmlaInfo = (14 Or xlSpecial)
+        xlGetMouseInfo = (15 Or xlSpecial)
+        xlAsyncReturn = (16 Or xlSpecial) /*Set return value from an asynchronous function call*/
+        xlEventRegister = (17 Or xlSpecial) /*Register an XLL event*/
+        xlRunningOnCluster = (18 Or xlSpecial) /*Returns true if running on Compute Cluster*/
+        xlGetInstPtr = (19 Or xlSpecial) /* Returns application's hinstance as a handle, supported on both 32-bit and 64-bit platforms */
+    End Enum
+    
+    Public Enum ExcelEditModes
+        xlModeReady = 0  ' not in edit mode
+        xlModeEnter = 1  ' enter mode
+        xlModeEdit = 2  ' edit mode
+        xlModePoint = 4  ' point mode
+    End Enum
+    
+    Public Enum ExcelDocTypes
+        dtNil = &H7f  ' window is not a sheet, macro, chart or basic
+    '  OR window is not the selected window at idle state
+        dtSheet = 0  ' sheet
+        dtProc = 1  ' XLM macro
+        dtChart = 2  ' Chart
+        dtBasic = 6  ' VBA
+    End Enum
+    
+    Public Enum ExcelHitTestCodes
+        htNone = &H00  ' none of below
+        htClient = &H01  ' internal for "in the client are", should never see
+        htVSplit = &H02  ' vertical split area with split panes
+        htHSplit = &H03  ' horizontal split area
+        htColWidth = &H04  ' column width adjuster area
+        htRwHeight = &H05  ' row height adjuster area
+        htRwColHdr = &H06  ' the intersection of row and column headers
+        htObject = &H07  ' the body of an object
+    '  the following are for size handles of draw objects
+        htTopLeft = &H08
+        htBotLeft = &H09
+        htLeft = &H0A
+        htTopRight = &H0B
+        htBotRight = &H0C
+        htRight = &H0D
+        htTop = &H0E
+        htBot = &H0F
+    '  end size handles
+        htRwGut = &H10  ' row area of outline gutter
+        htColGut = &H11  ' column area of outline gutter
+        htTextBox = &H12  ' body of a text box (where we shouw I-Beam cursor)
+        htRwLevels = &H13  ' row levels buttons of outline gutter
+        htColLevels = &H14  ' column levels buttons of outline gutter
+        htDman = &H15  ' the drag/drop handle of the selection
+        htDmanFill = &H16  ' the auto-fill handle of the selection
+        htXSplit = &H17  ' the intersection of the horz & vert pane splits
+        htVertex = &H18  ' a vertex of a polygon draw object
+        htAddVtx = &H19  ' htVertex in add a vertex mode
+        htDelVtx = &H1A  ' htVertex in delete a vertex mode
+        htRwHdr = &H1B  ' row header
+        htColHdr = &H1C  ' column header
+        htRwShow = &H1D  ' Like htRowHeight except means grow a hidden column
+        htColShow = &H1E  ' column version of htRwShow
+        htSizing = &H1F  ' Internal use only
+        htSxpivot = &H20  ' a drag/drop tile in a pivot table
+        htTabs = &H21  ' the sheet paging tabs
+        htEdit = &H22  ' Internal use only
+    End Enum
+    
+    Public Type FMLAINFO
+        wPointMode As Long ' current edit mode.  0 => rest of struct undefined
+        cch As Long ' count of characters in formula
+        lpch As LongPtr 'char* ' pointer to formula characters.  READ ONLY!!!
+        ichFirst As Long ' char offset to start of selection
+        ichLast As Long ' char offset to end of selection (may be > cch)
+        ichCaret As Long ' char offset to blinking caret
+    End Type
+    
+    Public Type MOUSEINFO
+        /* input section */
+        hwnd As LongPtr ' window to get info on
+        pt As POINT ' mouse position to get info on
+        /* output section */
+        dt As Long ' document(page) type
+        ht As Long ' hit test code
+        rw As Long ' row @ mouse (-1 if #n/a)
+        col As Long ' col @ mouse (-1 if #n/a)
+    End Type
+    
+    
+    
+    Public Enum ExcelFunctionNumbers
+        xlUDF = 255
+        xlfCount = 0
+        xlfIsna = 2
+        xlfIserror = 3
+        xlfSum = 4
+        xlfAverage = 5
+        xlfMin = 6
+        xlfMax = 7
+        xlfRow = 8
+        xlfColumn = 9
+        xlfNa = 10
+        xlfNpv = 11
+        xlfStdev = 12
+        xlfDollar = 13
+        xlfFixed = 14
+        xlfSin = 15
+        xlfCos = 16
+        xlfTan = 17
+        xlfAtan = 18
+        xlfPi = 19
+        xlfSqrt = 20
+        xlfExp = 21
+        xlfLn = 22
+        xlfLog10 = 23
+        xlfAbs = 24
+        xlfInt = 25
+        xlfSign = 26
+        xlfRound = 27
+        xlfLookup = 28
+        xlfIndex = 29
+        xlfRept = 30
+        xlfMid = 31
+        xlfLen = 32
+        xlfValue = 33
+        xlfTrue = 34
+        xlfFalse = 35
+        xlfAnd = 36
+        xlfOr = 37
+        xlfNot = 38
+        xlfMod = 39
+        xlfDcount = 40
+        xlfDsum = 41
+        xlfDaverage = 42
+        xlfDmin = 43
+        xlfDmax = 44
+        xlfDstdev = 45
+        xlfVar = 46
+        xlfDvar = 47
+        xlfText = 48
+        xlfLinest = 49
+        xlfTrend = 50
+        xlfLogest = 51
+        xlfGrowth = 52
+        xlfGoto = 53
+        xlfHalt = 54
+        xlfPv = 56
+        xlfFv = 57
+        xlfNper = 58
+        xlfPmt = 59
+        xlfRate = 60
+        xlfMirr = 61
+        xlfIrr = 62
+        xlfRand = 63
+        xlfMatch = 64
+        xlfDate = 65
+        xlfTime = 66
+        xlfDay = 67
+        xlfMonth = 68
+        xlfYear = 69
+        xlfWeekday = 70
+        xlfHour = 71
+        xlfMinute = 72
+        xlfSecond = 73
+        xlfNow = 74
+        xlfAreas = 75
+        xlfRows = 76
+        xlfColumns = 77
+        xlfOffset = 78
+        xlfAbsref = 79
+        xlfRelref = 80
+        xlfArgument = 81
+        xlfSearch = 82
+        xlfTranspose = 83
+        xlfError = 84
+        xlfStep = 85
+        xlfType = 86
+        xlfEcho = 87
+        xlfSetName = 88
+        xlfCaller = 89
+        xlfDeref = 90
+        xlfWindows = 91
+        xlfSeries = 92
+        xlfDocuments = 93
+        xlfActiveCell = 94
+        xlfSelection = 95
+        xlfResult = 96
+        xlfAtan2 = 97
+        xlfAsin = 98
+        xlfAcos = 99
+        xlfChoose = 100
+        xlfHlookup = 101
+        xlfVlookup = 102
+        xlfLinks = 103
+        xlfInput = 104
+        xlfIsref = 105
+        xlfGetFormula = 106
+        xlfGetName = 107
+        xlfSetValue = 108
+        xlfLog = 109
+        xlfExec = 110
+        xlfChar = 111
+        xlfLower = 112
+        xlfUpper = 113
+        xlfProper = 114
+        xlfLeft = 115
+        xlfRight = 116
+        xlfExact = 117
+        xlfTrim = 118
+        xlfReplace = 119
+        xlfSubstitute = 120
+        xlfCode = 121
+        xlfNames = 122
+        xlfDirectory = 123
+        xlfFind = 124
+        xlfCell = 125
+        xlfIserr = 126
+        xlfIstext = 127
+        xlfIsnumber = 128
+        xlfIsblank = 129
+        xlfT = 130
+        xlfN = 131
+        xlfFopen = 132
+        xlfFclose = 133
+        xlfFsize = 134
+        xlfFreadln = 135
+        xlfFread = 136
+        xlfFwriteln = 137
+        xlfFwrite = 138
+        xlfFpos = 139
+        xlfDatevalue = 140
+        xlfTimevalue = 141
+        xlfSln = 142
+        xlfSyd = 143
+        xlfDdb = 144
+        xlfGetDef = 145
+        xlfReftext = 146
+        xlfTextref = 147
+        xlfIndirect = 148
+        xlfRegister = 149
+        xlfCall = 150
+        xlfAddBar = 151
+        xlfAddMenu = 152
+        xlfAddCommand = 153
+        xlfEnableCommand = 154
+        xlfCheckCommand = 155
+        xlfRenameCommand = 156
+        xlfShowBar = 157
+        xlfDeleteMenu = 158
+        xlfDeleteCommand = 159
+        xlfGetChartItem = 160
+        xlfDialogBox = 161
+        xlfClean = 162
+        xlfMdeterm = 163
+        xlfMinverse = 164
+        xlfMmult = 165
+        xlfFiles = 166
+        xlfIpmt = 167
+        xlfPpmt = 168
+        xlfCounta = 169
+        xlfCancelKey = 170
+        xlfInitiate = 175
+        xlfRequest = 176
+        xlfPoke = 177
+        xlfExecute = 178
+        xlfTerminate = 179
+        xlfRestart = 180
+        xlfHelp = 181
+        xlfGetBar = 182
+        xlfProduct = 183
+        xlfFact = 184
+        xlfGetCell = 185
+        xlfGetWorkspace = 186
+        xlfGetWindow = 187
+        xlfGetDocument = 188
+        xlfDproduct = 189
+        xlfIsnontext = 190
+        xlfGetNote = 191
+        xlfNote = 192
+        xlfStdevp = 193
+        xlfVarp = 194
+        xlfDstdevp = 195
+        xlfDvarp = 196
+        xlfTrunc = 197
+        xlfIslogical = 198
+        xlfDcounta = 199
+        xlfDeleteBar = 200
+        xlfUnregister = 201
+        xlfUsdollar = 204
+        xlfFindb = 205
+        xlfSearchb = 206
+        xlfReplaceb = 207
+        xlfLeftb = 208
+        xlfRightb = 209
+        xlfMidb = 210
+        xlfLenb = 211
+        xlfRoundup = 212
+        xlfRounddown = 213
+        xlfAsc = 214
+        xlfDbcs = 215
+        xlfRank = 216
+        xlfAddress = 219
+        xlfDays360 = 220
+        xlfToday = 221
+        xlfVdb = 222
+        xlfMedian = 227
+        xlfSumproduct = 228
+        xlfSinh = 229
+        xlfCosh = 230
+        xlfTanh = 231
+        xlfAsinh = 232
+        xlfAcosh = 233
+        xlfAtanh = 234
+        xlfDget = 235
+        xlfCreateObject = 236
+        xlfVolatile = 237
+        xlfLastError = 238
+        xlfCustomUndo = 239
+        xlfCustomRepeat = 240
+        xlfFormulaConvert = 241
+        xlfGetLinkInfo = 242
+        xlfTextBox = 243
+        xlfInfo = 244
+        xlfGroup = 245
+        xlfGetObject = 246
+        xlfDb = 247
+        xlfPause = 248
+        xlfResume = 251
+        xlfFrequency = 252
+        xlfAddToolbar = 253
+        xlfDeleteToolbar = 254
+        xlfResetToolbar = 256
+        xlfEvaluate = 257
+        xlfGetToolbar = 258
+        xlfGetTool = 259
+        xlfSpellingCheck = 260
+        xlfErrorType = 261
+        xlfAppTitle = 262
+        xlfWindowTitle = 263
+        xlfSaveToolbar = 264
+        xlfEnableTool = 265
+        xlfPressTool = 266
+        xlfRegisterId = 267
+        xlfGetWorkbook = 268
+        xlfAvedev = 269
+        xlfBetadist = 270
+        xlfGammaln = 271
+        xlfBetainv = 272
+        xlfBinomdist = 273
+        xlfChidist = 274
+        xlfChiinv = 275
+        xlfCombin = 276
+        xlfConfidence = 277
+        xlfCritbinom = 278
+        xlfEven = 279
+        xlfExpondist = 280
+        xlfFdist = 281
+        xlfFinv = 282
+        xlfFisher = 283
+        xlfFisherinv = 284
+        xlfFloor = 285
+        xlfGammadist = 286
+        xlfGammainv = 287
+        xlfCeiling = 288
+        xlfHypgeomdist = 289
+        xlfLognormdist = 290
+        xlfLoginv = 291
+        xlfNegbinomdist = 292
+        xlfNormdist = 293
+        xlfNormsdist = 294
+        xlfNorminv = 295
+        xlfNormsinv = 296
+        xlfStandardize = 297
+        xlfOdd = 298
+        xlfPermut = 299
+        xlfPoisson = 300
+        xlfTdist = 301
+        xlfWeibull = 302
+        xlfSumxmy2 = 303
+        xlfSumx2my2 = 304
+        xlfSumx2py2 = 305
+        xlfChitest = 306
+        xlfCorrel = 307
+        xlfCovar = 308
+        xlfForecast = 309
+        xlfFtest = 310
+        xlfIntercept = 311
+        xlfPearson = 312
+        xlfRsq = 313
+        xlfSteyx = 314
+        xlfSlope = 315
+        xlfTtest = 316
+        xlfProb = 317
+        xlfDevsq = 318
+        xlfGeomean = 319
+        xlfHarmean = 320
+        xlfSumsq = 321
+        xlfKurt = 322
+        xlfSkew = 323
+        xlfZtest = 324
+        xlfLarge = 325
+        xlfSmall = 326
+        xlfQuartile = 327
+        xlfPercentile = 328
+        xlfPercentrank = 329
+        xlfMode = 330
+        xlfTrimmean = 331
+        xlfTinv = 332
+        xlfMovieCommand = 334
+        xlfGetMovie = 335
+        xlfConcatenate = 336
+        xlfPower = 337
+        xlfPivotAddData = 338
+        xlfGetPivotTable = 339
+        xlfGetPivotField = 340
+        xlfGetPivotItem = 341
+        xlfRadians = 342
+        xlfDegrees = 343
+        xlfSubtotal = 344
+        xlfSumif = 345
+        xlfCountif = 346
+        xlfCountblank = 347
+        xlfScenarioGet = 348
+        xlfOptionsListsGet = 349
+        xlfIspmt = 350
+        xlfDatedif = 351
+        xlfDatestring = 352
+        xlfNumberstring = 353
+        xlfRoman = 354
+        xlfOpenDialog = 355
+        xlfSaveDialog = 356
+        xlfViewGet = 357
+        xlfGetpivotdata = 358
+        xlfHyperlink = 359
+        xlfPhonetic = 360
+        xlfAveragea = 361
+        xlfMaxa = 362
+        xlfMina = 363
+        xlfStdevpa = 364
+        xlfVarpa = 365
+        xlfStdeva = 366
+        xlfVara = 367
+        xlfBahttext = 368
+        xlfThaidayofweek = 369
+        xlfThaidigit = 370
+        xlfThaimonthofyear = 371
+        xlfThainumsound = 372
+        xlfThainumstring = 373
+        xlfThaistringlength = 374
+        xlfIsthaidigit = 375
+        xlfRoundbahtdown = 376
+        xlfRoundbahtup = 377
+        xlfThaiyear = 378
+        xlfRtd = 379
+        xlfCubevalue = 380
+        xlfCubemember = 381
+        xlfCubememberproperty = 382
+        xlfCuberankedmember = 383
+        xlfHex2bin = 384
+        xlfHex2dec = 385
+        xlfHex2oct = 386
+        xlfDec2bin = 387
+        xlfDec2hex = 388
+        xlfDec2oct = 389
+        xlfOct2bin = 390
+        xlfOct2hex = 391
+        xlfOct2dec = 392
+        xlfBin2dec = 393
+        xlfBin2oct = 394
+        xlfBin2hex = 395
+        xlfImsub = 396
+        xlfImdiv = 397
+        xlfImpower = 398
+        xlfImabs = 399
+        xlfImsqrt = 400
+        xlfImln = 401
+        xlfImlog2 = 402
+        xlfImlog10 = 403
+        xlfImsin = 404
+        xlfImcos = 405
+        xlfImexp = 406
+        xlfImargument = 407
+        xlfImconjugate = 408
+        xlfImaginary = 409
+        xlfImreal = 410
+        xlfComplex = 411
+        xlfImsum = 412
+        xlfImproduct = 413
+        xlfSeriessum = 414
+        xlfFactdouble = 415
+        xlfSqrtpi = 416
+        xlfQuotient = 417
+        xlfDelta = 418
+        xlfGestep = 419
+        xlfIseven = 420
+        xlfIsodd = 421
+        xlfMround = 422
+        xlfErf = 423
+        xlfErfc = 424
+        xlfBesselj = 425
+        xlfBesselk = 426
+        xlfBessely = 427
+        xlfBesseli = 428
+        xlfXirr = 429
+        xlfXnpv = 430
+        xlfPricemat = 431
+        xlfYieldmat = 432
+        xlfIntrate = 433
+        xlfReceived = 434
+        xlfDisc = 435
+        xlfPricedisc = 436
+        xlfYielddisc = 437
+        xlfTbilleq = 438
+        xlfTbillprice = 439
+        xlfTbillyield = 440
+        xlfPrice = 441
+        xlfYield = 442
+        xlfDollarde = 443
+        xlfDollarfr = 444
+        xlfNominal = 445
+        xlfEffect = 446
+        xlfCumprinc = 447
+        xlfCumipmt = 448
+        xlfEdate = 449
+        xlfEomonth = 450
+        xlfYearfrac = 451
+        xlfCoupdaybs = 452
+        xlfCoupdays = 453
+        xlfCoupdaysnc = 454
+        xlfCoupncd = 455
+        xlfCoupnum = 456
+        xlfCouppcd = 457
+        xlfDuration = 458
+        xlfMduration = 459
+        xlfOddlprice = 460
+        xlfOddlyield = 461
+        xlfOddfprice = 462
+        xlfOddfyield = 463
+        xlfRandbetween = 464
+        xlfWeeknum = 465
+        xlfAmordegrc = 466
+        xlfAmorlinc = 467
+        xlfConvert = 468
+        xlfAccrint = 469
+        xlfAccrintm = 470
+        xlfWorkday = 471
+        xlfNetworkdays = 472
+        xlfGcd = 473
+        xlfMultinomial = 474
+        xlfLcm = 475
+        xlfFvschedule = 476
+        xlfCubekpimember = 477
+        xlfCubeset = 478
+        xlfCubesetcount = 479
+        xlfIferror = 480
+        xlfCountifs = 481
+        xlfSumifs = 482
+        xlfAverageif = 483
+        xlfAverageifs = 484
+        xlfAggregate = 485
+        xlfBinom_dist = 486
+        xlfBinom_inv = 487
+        xlfConfidence_norm = 488
+        xlfConfidence_t = 489
+        xlfChisq_test = 490
+        xlfF_test = 491
+        xlfCovariance_p = 492
+        xlfCovariance_s = 493
+        xlfExpon_dist = 494
+        xlfGamma_dist = 495
+        xlfGamma_inv = 496
+        xlfMode_mult = 497
+        xlfMode_sngl = 498
+        xlfNorm_dist = 499
+        xlfNorm_inv = 500
+        xlfPercentile_exc = 501
+        xlfPercentile_inc = 502
+        xlfPercentrank_exc = 503
+        xlfPercentrank_inc = 504
+        xlfPoisson_dist = 505
+        xlfQuartile_exc = 506
+        xlfQuartile_inc = 507
+        xlfRank_avg = 508
+        xlfRank_eq = 509
+        xlfStdev_s = 510
+        xlfStdev_p = 511
+        xlfT_dist = 512
+        xlfT_dist_2t = 513
+        xlfT_dist_rt = 514
+        xlfT_inv = 515
+        xlfT_inv_2t = 516
+        xlfVar_s = 517
+        xlfVar_p = 518
+        xlfWeibull_dist = 519
+        xlfNetworkdays_intl = 520
+        xlfWorkday_intl = 521
+        xlfEcma_ceiling = 522
+        xlfIso_ceiling = 523
+        xlfBeta_dist = 525
+        xlfBeta_inv = 526
+        xlfChisq_dist = 527
+        xlfChisq_dist_rt = 528
+        xlfChisq_inv = 529
+        xlfChisq_inv_rt = 530
+        xlfF_dist = 531
+        xlfF_dist_rt = 532
+        xlfF_inv = 533
+        xlfF_inv_rt = 534
+        xlfHypgeom_dist = 535
+        xlfLognorm_dist = 536
+        xlfLognorm_inv = 537
+        xlfNegbinom_dist = 538
+        xlfNorm_s_dist = 539
+        xlfNorm_s_inv = 540
+        xlfT_test = 541
+        xlfZ_test = 542
+        xlfErf_precise = 543
+        xlfErfc_precise = 544
+        xlfGammaln_precise = 545
+        xlfCeiling_precise = 546
+        xlfFloor_precise = 547
+        xlfAcot = 548
+        xlfAcoth = 549
+        xlfCot = 550
+        xlfCoth = 551
+        xlfCsc = 552
+        xlfCsch = 553
+        xlfSec = 554
+        xlfSech = 555
+        xlfImtan = 556
+        xlfImcot = 557
+        xlfImcsc = 558
+        xlfImcsch = 559
+        xlfImsec = 560
+        xlfImsech = 561
+        xlfBitand = 562
+        xlfBitor = 563
+        xlfBitxor = 564
+        xlfBitlshift = 565
+        xlfBitrshift = 566
+        xlfPermutationa = 567
+        xlfCombina = 568
+        xlfXor = 569
+        xlfPduration = 570
+        xlfBase = 571
+        xlfDecimal = 572
+        xlfDays = 573
+        xlfBinom_dist_range = 574
+        xlfGamma = 575
+        xlfSkew_p = 576
+        xlfGauss = 577
+        xlfPhi = 578
+        xlfRri = 579
+        xlfUnichar = 580
+        xlfUnicode = 581
+        xlfMunit = 582
+        xlfArabic = 583
+        xlfIsoweeknum = 584
+        xlfNumbervalue = 585
+        xlfSheet = 586
+        xlfSheets = 587
+        xlfFormulatext = 588
+        xlfIsformula = 589
+        xlfIfna = 590
+        xlfCeiling_math = 591
+        xlfFloor_math = 592
+        xlfImsinh = 593
+        xlfImcosh = 594
+        xlfFilterxml = 595
+        xlfWebservice = 596
+        xlfEncodeurl = 597
+    End Enum
+    Public Enum ExcelCommandNumbers
+        xlcBeep = (0 Or xlCommand)
+        xlcOpen = (1 Or xlCommand)
+        xlcOpenLinks = (2 Or xlCommand)
+        xlcCloseAll = (3 Or xlCommand)
+        xlcSave = (4 Or xlCommand)
+        xlcSaveAs = (5 Or xlCommand)
+        xlcFileDelete = (6 Or xlCommand)
+        xlcPageSetup = (7 Or xlCommand)
+        xlcPrint = (8 Or xlCommand)
+        xlcPrinterSetup = (9 Or xlCommand)
+        xlcQuit = (10 Or xlCommand)
+        xlcNewWindow = (11 Or xlCommand)
+        xlcArrangeAll = (12 Or xlCommand)
+        xlcWindowSize = (13 Or xlCommand)
+        xlcWindowMove = (14 Or xlCommand)
+        xlcFull = (15 Or xlCommand)
+        xlcClose = (16 Or xlCommand)
+        xlcRun = (17 Or xlCommand)
+        xlcSetPrintArea = (22 Or xlCommand)
+        xlcSetPrintTitles = (23 Or xlCommand)
+        xlcSetPageBreak = (24 Or xlCommand)
+        xlcRemovePageBreak = (25 Or xlCommand)
+        xlcFont = (26 Or xlCommand)
+        xlcDisplay = (27 Or xlCommand)
+        xlcProtectDocument = (28 Or xlCommand)
+        xlcPrecision = (29 Or xlCommand)
+        xlcA1R1c1 = (30 Or xlCommand)
+        xlcCalculateNow = (31 Or xlCommand)
+        xlcCalculation = (32 Or xlCommand)
+        xlcDataFind = (34 Or xlCommand)
+        xlcExtract = (35 Or xlCommand)
+        xlcDataDelete = (36 Or xlCommand)
+        xlcSetDatabase = (37 Or xlCommand)
+        xlcSetCriteria = (38 Or xlCommand)
+        xlcSort = (39 Or xlCommand)
+        xlcDataSeries = (40 Or xlCommand)
+        xlcTable = (41 Or xlCommand)
+        xlcFormatNumber = (42 Or xlCommand)
+        xlcAlignment = (43 Or xlCommand)
+        xlcStyle = (44 Or xlCommand)
+        xlcBorder = (45 Or xlCommand)
+        xlcCellProtection = (46 Or xlCommand)
+        xlcColumnWidth = (47 Or xlCommand)
+        xlcUndo = (48 Or xlCommand)
+        xlcCut = (49 Or xlCommand)
+        xlcCopy = (50 Or xlCommand)
+        xlcPaste = (51 Or xlCommand)
+        xlcClear = (52 Or xlCommand)
+        xlcPasteSpecial = (53 Or xlCommand)
+        xlcEditDelete = (54 Or xlCommand)
+        xlcInsert = (55 Or xlCommand)
+        xlcFillRight = (56 Or xlCommand)
+        xlcFillDown = (57 Or xlCommand)
+        xlcDefineName = (61 Or xlCommand)
+        xlcCreateNames = (62 Or xlCommand)
+        xlcFormulaGoto = (63 Or xlCommand)
+        xlcFormulaFind = (64 Or xlCommand)
+        xlcSelectLastCell = (65 Or xlCommand)
+        xlcShowActiveCell = (66 Or xlCommand)
+        xlcGalleryArea = (67 Or xlCommand)
+        xlcGalleryBar = (68 Or xlCommand)
+        xlcGalleryColumn = (69 Or xlCommand)
+        xlcGalleryLine = (70 Or xlCommand)
+        xlcGalleryPie = (71 Or xlCommand)
+        xlcGalleryScatter = (72 Or xlCommand)
+        xlcCombination = (73 Or xlCommand)
+        xlcPreferred = (74 Or xlCommand)
+        xlcAddOverlay = (75 Or xlCommand)
+        xlcGridlines = (76 Or xlCommand)
+        xlcSetPreferred = (77 Or xlCommand)
+        xlcAxes = (78 Or xlCommand)
+        xlcLegend = (79 Or xlCommand)
+        xlcAttachText = (80 Or xlCommand)
+        xlcAddArrow = (81 Or xlCommand)
+        xlcSelectChart = (82 Or xlCommand)
+        xlcSelectPlotArea = (83 Or xlCommand)
+        xlcPatterns = (84 Or xlCommand)
+        xlcMainChart = (85 Or xlCommand)
+        xlcOverlay = (86 Or xlCommand)
+        xlcScale = (87 Or xlCommand)
+        xlcFormatLegend = (88 Or xlCommand)
+        xlcFormatText = (89 Or xlCommand)
+        xlcEditRepeat = (90 Or xlCommand)
+        xlcParse = (91 Or xlCommand)
+        xlcJustify = (92 Or xlCommand)
+        xlcHide = (93 Or xlCommand)
+        xlcUnhide = (94 Or xlCommand)
+        xlcWorkspace = (95 Or xlCommand)
+        xlcFormula = (96 Or xlCommand)
+        xlcFormulaFill = (97 Or xlCommand)
+        xlcFormulaArray = (98 Or xlCommand)
+        xlcDataFindNext = (99 Or xlCommand)
+        xlcDataFindPrev = (100 Or xlCommand)
+        xlcFormulaFindNext = (101 Or xlCommand)
+        xlcFormulaFindPrev = (102 Or xlCommand)
+        xlcActivate = (103 Or xlCommand)
+        xlcActivateNext = (104 Or xlCommand)
+        xlcActivatePrev = (105 Or xlCommand)
+        xlcUnlockedNext = (106 Or xlCommand)
+        xlcUnlockedPrev = (107 Or xlCommand)
+        xlcCopyPicture = (108 Or xlCommand)
+        xlcSelect = (109 Or xlCommand)
+        xlcDeleteName = (110 Or xlCommand)
+        xlcDeleteFormat = (111 Or xlCommand)
+        xlcVline = (112 Or xlCommand)
+        xlcHline = (113 Or xlCommand)
+        xlcVpage = (114 Or xlCommand)
+        xlcHpage = (115 Or xlCommand)
+        xlcVscroll = (116 Or xlCommand)
+        xlcHscroll = (117 Or xlCommand)
+        xlcAlert = (118 Or xlCommand)
+        xlcNew = (119 Or xlCommand)
+        xlcCancelCopy = (120 Or xlCommand)
+        xlcShowClipboard = (121 Or xlCommand)
+        xlcMessage = (122 Or xlCommand)
+        xlcPasteLink = (124 Or xlCommand)
+        xlcAppActivate = (125 Or xlCommand)
+        xlcDeleteArrow = (126 Or xlCommand)
+        xlcRowHeight = (127 Or xlCommand)
+        xlcFormatMove = (128 Or xlCommand)
+        xlcFormatSize = (129 Or xlCommand)
+        xlcFormulaReplace = (130 Or xlCommand)
+        xlcSendKeys = (131 Or xlCommand)
+        xlcSelectSpecial = (132 Or xlCommand)
+        xlcApplyNames = (133 Or xlCommand)
+        xlcReplaceFont = (134 Or xlCommand)
+        xlcFreezePanes = (135 Or xlCommand)
+        xlcShowInfo = (136 Or xlCommand)
+        xlcSplit = (137 Or xlCommand)
+        xlcOnWindow = (138 Or xlCommand)
+        xlcOnData = (139 Or xlCommand)
+        xlcDisableInput = (140 Or xlCommand)
+        xlcEcho = (141 Or xlCommand)
+        xlcOutline = (142 Or xlCommand)
+        xlcListNames = (143 Or xlCommand)
+        xlcFileClose = (144 Or xlCommand)
+        xlcSaveWorkbook = (145 Or xlCommand)
+        xlcDataForm = (146 Or xlCommand)
+        xlcCopyChart = (147 Or xlCommand)
+        xlcOnTime = (148 Or xlCommand)
+        xlcWait = (149 Or xlCommand)
+        xlcFormatFont = (150 Or xlCommand)
+        xlcFillUp = (151 Or xlCommand)
+        xlcFillLeft = (152 Or xlCommand)
+        xlcDeleteOverlay = (153 Or xlCommand)
+        xlcNote = (154 Or xlCommand)
+        xlcShortMenus = (155 Or xlCommand)
+        xlcSetUpdateStatus = (159 Or xlCommand)
+        xlcColorPalette = (161 Or xlCommand)
+        xlcDeleteStyle = (162 Or xlCommand)
+        xlcWindowRestore = (163 Or xlCommand)
+        xlcWindowMaximize = (164 Or xlCommand)
+        xlcError = (165 Or xlCommand)
+        xlcChangeLink = (166 Or xlCommand)
+        xlcCalculateDocument = (167 Or xlCommand)
+        xlcOnKey = (168 Or xlCommand)
+        xlcAppRestore = (169 Or xlCommand)
+        xlcAppMove = (170 Or xlCommand)
+        xlcAppSize = (171 Or xlCommand)
+        xlcAppMinimize = (172 Or xlCommand)
+        xlcAppMaximize = (173 Or xlCommand)
+        xlcBringToFront = (174 Or xlCommand)
+        xlcSendToBack = (175 Or xlCommand)
+        xlcMainChartType = (185 Or xlCommand)
+        xlcOverlayChartType = (186 Or xlCommand)
+        xlcSelectEnd = (187 Or xlCommand)
+        xlcOpenMail = (188 Or xlCommand)
+        xlcSendMail = (189 Or xlCommand)
+        xlcStandardFont = (190 Or xlCommand)
+        xlcConsolidate = (191 Or xlCommand)
+        xlcSortSpecial = (192 Or xlCommand)
+        xlcGallery3dArea = (193 Or xlCommand)
+        xlcGallery3dColumn = (194 Or xlCommand)
+        xlcGallery3dLine = (195 Or xlCommand)
+        xlcGallery3dPie = (196 Or xlCommand)
+        xlcView3d = (197 Or xlCommand)
+        xlcGoalSeek = (198 Or xlCommand)
+        xlcWorkgroup = (199 Or xlCommand)
+        xlcFillGroup = (200 Or xlCommand)
+        xlcUpdateLink = (201 Or xlCommand)
+        xlcPromote = (202 Or xlCommand)
+        xlcDemote = (203 Or xlCommand)
+        xlcShowDetail = (204 Or xlCommand)
+        xlcUngroup = (206 Or xlCommand)
+        xlcObjectProperties = (207 Or xlCommand)
+        xlcSaveNewObject = (208 Or xlCommand)
+        xlcShare = (209 Or xlCommand)
+        xlcShareName = (210 Or xlCommand)
+        xlcDuplicate = (211 Or xlCommand)
+        xlcApplyStyle = (212 Or xlCommand)
+        xlcAssignToObject = (213 Or xlCommand)
+        xlcObjectProtection = (214 Or xlCommand)
+        xlcHideObject = (215 Or xlCommand)
+        xlcSetExtract = (216 Or xlCommand)
+        xlcCreatePublisher = (217 Or xlCommand)
+        xlcSubscribeTo = (218 Or xlCommand)
+        xlcAttributes = (219 Or xlCommand)
+        xlcShowToolbar = (220 Or xlCommand)
+        xlcPrintPreview = (222 Or xlCommand)
+        xlcEditColor = (223 Or xlCommand)
+        xlcShowLevels = (224 Or xlCommand)
+        xlcFormatMain = (225 Or xlCommand)
+        xlcFormatOverlay = (226 Or xlCommand)
+        xlcOnRecalc = (227 Or xlCommand)
+        xlcEditSeries = (228 Or xlCommand)
+        xlcDefineStyle = (229 Or xlCommand)
+        xlcLinePrint = (240 Or xlCommand)
+        xlcEnterData = (243 Or xlCommand)
+        xlcGalleryRadar = (249 Or xlCommand)
+        xlcMergeStyles = (250 Or xlCommand)
+        xlcEditionOptions = (251 Or xlCommand)
+        xlcPastePicture = (252 Or xlCommand)
+        xlcPastePictureLink = (253 Or xlCommand)
+        xlcSpelling = (254 Or xlCommand)
+        xlcZoom = (256 Or xlCommand)
+        xlcResume = (258 Or xlCommand)
+        xlcInsertObject = (259 Or xlCommand)
+        xlcWindowMinimize = (260 Or xlCommand)
+        xlcSize = (261 Or xlCommand)
+        xlcMove = (262 Or xlCommand)
+        xlcSoundNote = (265 Or xlCommand)
+        xlcSoundPlay = (266 Or xlCommand)
+        xlcFormatShape = (267 Or xlCommand)
+        xlcExtendPolygon = (268 Or xlCommand)
+        xlcFormatAuto = (269 Or xlCommand)
+        xlcGallery3dBar = (272 Or xlCommand)
+        xlcGallery3dSurface = (273 Or xlCommand)
+        xlcFillAuto = (274 Or xlCommand)
+        xlcCustomizeToolbar = (276 Or xlCommand)
+        xlcAddTool = (277 Or xlCommand)
+        xlcEditObject = (278 Or xlCommand)
+        xlcOnDoubleclick = (279 Or xlCommand)
+        xlcOnEntry = (280 Or xlCommand)
+        xlcWorkbookAdd = (281 Or xlCommand)
+        xlcWorkbookMove = (282 Or xlCommand)
+        xlcWorkbookCopy = (283 Or xlCommand)
+        xlcWorkbookOptions = (284 Or xlCommand)
+        xlcSaveWorkspace = (285 Or xlCommand)
+        xlcChartWizard = (288 Or xlCommand)
+        xlcDeleteTool = (289 Or xlCommand)
+        xlcMoveTool = (290 Or xlCommand)
+        xlcWorkbookSelect = (291 Or xlCommand)
+        xlcWorkbookActivate = (292 Or xlCommand)
+        xlcAssignToTool = (293 Or xlCommand)
+        xlcCopyTool = (295 Or xlCommand)
+        xlcResetTool = (296 Or xlCommand)
+        xlcConstrainNumeric = (297 Or xlCommand)
+        xlcPasteTool = (298 Or xlCommand)
+        xlcPlacement = (300 Or xlCommand)
+        xlcFillWorkgroup = (301 Or xlCommand)
+        xlcWorkbookNew = (302 Or xlCommand)
+        xlcScenarioCells = (305 Or xlCommand)
+        xlcScenarioDelete = (306 Or xlCommand)
+        xlcScenarioAdd = (307 Or xlCommand)
+        xlcScenarioEdit = (308 Or xlCommand)
+        xlcScenarioShow = (309 Or xlCommand)
+        xlcScenarioShowNext = (310 Or xlCommand)
+        xlcScenarioSummary = (311 Or xlCommand)
+        xlcPivotTableWizard = (312 Or xlCommand)
+        xlcPivotFieldProperties = (313 Or xlCommand)
+        xlcPivotField = (314 Or xlCommand)
+        xlcPivotItem = (315 Or xlCommand)
+        xlcPivotAddFields = (316 Or xlCommand)
+        xlcOptionsCalculation = (318 Or xlCommand)
+        xlcOptionsEdit = (319 Or xlCommand)
+        xlcOptionsView = (320 Or xlCommand)
+        xlcAddinManager = (321 Or xlCommand)
+        xlcMenuEditor = (322 Or xlCommand)
+        xlcAttachToolbars = (323 Or xlCommand)
+        xlcVbaactivate = (324 Or xlCommand)
+        xlcOptionsChart = (325 Or xlCommand)
+        xlcVbaInsertFile = (328 Or xlCommand)
+        xlcVbaProcedureDefinition = (330 Or xlCommand)
+        xlcRoutingSlip = (336 Or xlCommand)
+        xlcRouteDocument = (338 Or xlCommand)
+        xlcMailLogon = (339 Or xlCommand)
+        xlcInsertPicture = (342 Or xlCommand)
+        xlcEditTool = (343 Or xlCommand)
+        xlcGalleryDoughnut = (344 Or xlCommand)
+        xlcChartTrend = (350 Or xlCommand)
+        xlcPivotItemProperties = (352 Or xlCommand)
+        xlcWorkbookInsert = (354 Or xlCommand)
+        xlcOptionsTransition = (355 Or xlCommand)
+        xlcOptionsGeneral = (356 Or xlCommand)
+        xlcFilterAdvanced = (370 Or xlCommand)
+        xlcMailAddMailer = (373 Or xlCommand)
+        xlcMailDeleteMailer = (374 Or xlCommand)
+        xlcMailReply = (375 Or xlCommand)
+        xlcMailReplyAll = (376 Or xlCommand)
+        xlcMailForward = (377 Or xlCommand)
+        xlcMailNextLetter = (378 Or xlCommand)
+        xlcDataLabel = (379 Or xlCommand)
+        xlcInsertTitle = (380 Or xlCommand)
+        xlcFontProperties = (381 Or xlCommand)
+        xlcMacroOptions = (382 Or xlCommand)
+        xlcWorkbookHide = (383 Or xlCommand)
+        xlcWorkbookUnhide = (384 Or xlCommand)
+        xlcWorkbookDelete = (385 Or xlCommand)
+        xlcWorkbookName = (386 Or xlCommand)
+        xlcGalleryCustom = (388 Or xlCommand)
+        xlcAddChartAutoformat = (390 Or xlCommand)
+        xlcDeleteChartAutoformat = (391 Or xlCommand)
+        xlcChartAddData = (392 Or xlCommand)
+        xlcAutoOutline = (393 Or xlCommand)
+        xlcTabOrder = (394 Or xlCommand)
+        xlcShowDialog = (395 Or xlCommand)
+        xlcSelectAll = (396 Or xlCommand)
+        xlcUngroupSheets = (397 Or xlCommand)
+        xlcSubtotalCreate = (398 Or xlCommand)
+        xlcSubtotalRemove = (399 Or xlCommand)
+        xlcRenameObject = (400 Or xlCommand)
+        xlcWorkbookScroll = (412 Or xlCommand)
+        xlcWorkbookNext = (413 Or xlCommand)
+        xlcWorkbookPrev = (414 Or xlCommand)
+        xlcWorkbookTabSplit = (415 Or xlCommand)
+        xlcFullScreen = (416 Or xlCommand)
+        xlcWorkbookProtect = (417 Or xlCommand)
+        xlcScrollbarProperties = (420 Or xlCommand)
+        xlcPivotShowPages = (421 Or xlCommand)
+        xlcTextToColumns = (422 Or xlCommand)
+        xlcFormatCharttype = (423 Or xlCommand)
+        xlcLinkFormat = (424 Or xlCommand)
+        xlcTracerDisplay = (425 Or xlCommand)
+        xlcTracerNavigate = (430 Or xlCommand)
+        xlcTracerClear = (431 Or xlCommand)
+        xlcTracerError = (432 Or xlCommand)
+        xlcPivotFieldGroup = (433 Or xlCommand)
+        xlcPivotFieldUngroup = (434 Or xlCommand)
+        xlcCheckboxProperties = (435 Or xlCommand)
+        xlcLabelProperties = (436 Or xlCommand)
+        xlcListboxProperties = (437 Or xlCommand)
+        xlcEditboxProperties = (438 Or xlCommand)
+        xlcPivotRefresh = (439 Or xlCommand)
+        xlcLinkCombo = (440 Or xlCommand)
+        xlcOpenText = (441 Or xlCommand)
+        xlcHideDialog = (442 Or xlCommand)
+        xlcSetDialogFocus = (443 Or xlCommand)
+        xlcEnableObject = (444 Or xlCommand)
+        xlcPushbuttonProperties = (445 Or xlCommand)
+        xlcSetDialogDefault = (446 Or xlCommand)
+        xlcFilter = (447 Or xlCommand)
+        xlcFilterShowAll = (448 Or xlCommand)
+        xlcClearOutline = (449 Or xlCommand)
+        xlcFunctionWizard = (450 Or xlCommand)
+        xlcAddListItem = (451 Or xlCommand)
+        xlcSetListItem = (452 Or xlCommand)
+        xlcRemoveListItem = (453 Or xlCommand)
+        xlcSelectListItem = (454 Or xlCommand)
+        xlcSetControlValue = (455 Or xlCommand)
+        xlcSaveCopyAs = (456 Or xlCommand)
+        xlcOptionsListsAdd = (458 Or xlCommand)
+        xlcOptionsListsDelete = (459 Or xlCommand)
+        xlcSeriesAxes = (460 Or xlCommand)
+        xlcSeriesX = (461 Or xlCommand)
+        xlcSeriesY = (462 Or xlCommand)
+        xlcErrorbarX = (463 Or xlCommand)
+        xlcErrorbarY = (464 Or xlCommand)
+        xlcFormatChart = (465 Or xlCommand)
+        xlcSeriesOrder = (466 Or xlCommand)
+        xlcMailLogoff = (467 Or xlCommand)
+        xlcClearRoutingSlip = (468 Or xlCommand)
+        xlcAppActivateMicrosoft = (469 Or xlCommand)
+        xlcMailEditMailer = (470 Or xlCommand)
+        xlcOnSheet = (471 Or xlCommand)
+        xlcStandardWidth = (472 Or xlCommand)
+        xlcScenarioMerge = (473 Or xlCommand)
+        xlcSummaryInfo = (474 Or xlCommand)
+        xlcFindFile = (475 Or xlCommand)
+        xlcActiveCellFont = (476 Or xlCommand)
+        xlcEnableTipwizard = (477 Or xlCommand)
+        xlcVbaMakeAddin = (478 Or xlCommand)
+        xlcInsertdatatable = (480 Or xlCommand)
+        xlcWorkgroupOptions = (481 Or xlCommand)
+        xlcMailSendMailer = (482 Or xlCommand)
+        xlcAutocorrect = (485 Or xlCommand)
+        xlcPostDocument = (489 Or xlCommand)
+        xlcPicklist = (491 Or xlCommand)
+        xlcViewShow = (493 Or xlCommand)
+        xlcViewDefine = (494 Or xlCommand)
+        xlcViewDelete = (495 Or xlCommand)
+        xlcSheetBackground = (509 Or xlCommand)
+        xlcInsertMapObject = (510 Or xlCommand)
+        xlcOptionsMenono = (511 Or xlCommand)
+        xlcNormal = (518 Or xlCommand)
+        xlcLayout = (519 Or xlCommand)
+        xlcRmPrintArea = (520 Or xlCommand)
+        xlcClearPrintArea = (521 Or xlCommand)
+        xlcAddPrintArea = (522 Or xlCommand)
+        xlcMoveBrk = (523 Or xlCommand)
+        xlcHidecurrNote = (545 Or xlCommand)
+        xlcHideallNotes = (546 Or xlCommand)
+        xlcDeleteNote = (547 Or xlCommand)
+        xlcTraverseNotes = (548 Or xlCommand)
+        xlcActivateNotes = (549 Or xlCommand)
+        xlcProtectRevisions = (620 Or xlCommand)
+        xlcUnprotectRevisions = (621 Or xlCommand)
+        xlcOptionsMe = (647 Or xlCommand)
+        xlcWebPublish = (653 Or xlCommand)
+        xlcNewwebquery = (667 Or xlCommand)
+        xlcPivotTableChart = (673 Or xlCommand)
+        xlcOptionsSave = (753 Or xlCommand)
+        xlcOptionsSpell = (755 Or xlCommand)
+        xlcHideallInkannots = (808 Or xlCommand)
+    End Enum
+    #End Region
+    
+    
+    'General API defs; you don't need the following if you use WinDevLib
+    
+    Public Type POINT
+        x As Long
+        y As Long
+    End Type
+    Public Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (Destination As Any, Source As Any, ByVal Length As LongPtr)
+    Public Declare PtrSafe Function GlobalAlloc Lib "kernel32" (ByVal uFlags As GMEM, ByVal dwBytes As LongPtr) As LongPtr
+    Public Enum GMEM
+        GMEM_FIXED = &H0000
+        GMEM_MOVEABLE = &H0002
+        GMEM_NOCOMPACT = &H0010
+        GMEM_NODISCARD = &H0020
+        GMEM_ZEROINIT = &H0040
+        GMEM_MODIFY = &H0080
+        GMEM_DISCARDABLE = &H0100
+        GMEM_NOT_BANKED = &H1000
+        GMEM_SHARE = &H2000
+        GMEM_DDESHARE = &H2000
+        GMEM_NOTIFY = &H4000
+        GMEM_LOWER = &H1000
+        GMEM_VALID_FLAGS = &H7F72
+        GMEM_INVALID_HANDLE = &H8000&
+        GHND = GMEM_MOVEABLE Or GMEM_ZEROINIT
+        GPTR = GMEM_FIXED Or GMEM_ZEROINIT
+        GMEM_DISCARDED = &H4000
+        GMEM_LOCKCOUNT = &H00FF
+    End Enum
+    
+    [DllExport]
+    Public Function xlAutoOpen() As Integer
+ 
+        Dim text As String = StrConv("Hello world from a twinBASIC XLL Addin!", vbFromUnicode)
+        Dim text_len As Long = Len("Hello world from a twinBASIC XLL Addin!")
+        Dim message As XLOPER
+        message.xltype = xltypeStr
+       
+        Dim pStr As LongPtr = GlobalAlloc(GPTR, text_len + 2) 'Excel frees it, that's why this trouble
+        CopyMemory ByVal VarPtr(message), pStr, LenB(pStr)
+        CopyMemory ByVal pStr, CByte(text_len), 1
+        CopyMemory ByVal pStr + 1, ByVal StrPtr(text), text_len + 1
+ 
+        Dim dialog_type As XLOPER
+        dialog_type.xltype = xltypeInt
+        Dim n As Integer = 2
+        CopyMemory ByVal VarPtr(dialog_type), n, 2
+ 
+        Excel4(xlcAlert, vbNullPtr, 2, ByVal VarPtr(message), ByVal VarPtr(dialog_type))
+        Return 1
+    End Function
+ 'Original C program:
+    ' short __stdcall xlAutoOpen()
+    ' {
+        ' char *text = "Hello world";
+        ' size_t text_len = strlen(text);
+        ' XLOPER message;
+        ' message.xltype = xltypeStr;
+        ' message.val.str = (char *)malloc(text_len + 2);
+        ' memcpy(message.val.str + 1, text, text_len + 1);
+        ' message.val.str[0] = (char)text_len;
+        ' XLOPER dialog_type;
+        ' dialog_type.xltype = xltypeInt;
+        ' dialog_type.val.w = 2;
+        ' Excel4(xlcAlert, NULL, 2, &message, &dialog_type);
+        ' return 1;
+    ' }
+End Module
