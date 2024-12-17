@@ -1,3 +1,5 @@
+### For a more useful intro to XLLs with tB, check out my followup to this project, creating User-Defined Functions: https://github.com/fafalone/TBXLLUDF
+
 # HelloWorldXllTB
 Making Excel XLL Addins in twinBASIC
 
