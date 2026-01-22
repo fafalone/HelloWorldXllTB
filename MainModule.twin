@@ -1,5 +1,9 @@
 
 Module MainModule
+'Recommended you use ExcelSDK.twin from my XLL UDF Demo
+'It has all this plus helpers.
+' https://github.com/fafalone/TBXLLUDF
+
 
     #Region "xlcall.h"
     '100% coverage
@@ -1334,7 +1338,7 @@ Module MainModule
         Dim n As Integer = 2
         CopyMemory ByVal VarPtr(dialog_type), n, 2
  
-        Excel4(xlcAlert, vbNullPtr, 2, ByVal VarPtr(message), ByVal VarPtr(dialog_type))
+        Excel4(xlcAlert, ByVal vbNullPtr, 2, ByVal VarPtr(message), ByVal VarPtr(dialog_type))
         Return 1
     End Function
  'Original C program:
